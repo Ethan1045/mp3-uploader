@@ -6,7 +6,7 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0"
   >
-  <title>音乐上传</title>
+  <title>音频与图片上传</title>
 
   <style>
     * {
@@ -122,6 +122,16 @@
       margin-top: 8px;
     }
 
+    .image-preview {
+      display: block;
+      width: min(100%, 520px);
+      max-height: 360px;
+      margin-top: 12px;
+      border-radius: 12px;
+      object-fit: contain;
+      background: #f4f4f5;
+    }
+
     .small {
       color: #71717a;
       font-size: 13px;
@@ -138,19 +148,20 @@
 <body>
   <main>
     <section class="card">
-      <h1>音乐上传</h1>
+      <h1>音频与图片上传</h1>
 
       <label class="drop-zone" id="dropZone">
-        <strong>点击选择，或者把歌曲拖进这里</strong>
+        <strong>点击选择，或者把音频、图片拖进这里</strong>
         <p class="small">
-          支持批量上传 MP3、M4A、AAC、FLAC、WAV、OGG、OPUS
+          音频：MP3、M4A、AAC、FLAC、WAV、OGG、OPUS<br>
+          图片：JPG、PNG、GIF、WebP、AVIF
         </p>
 
         <input
           id="fileInput"
           type="file"
           multiple
-          accept="audio/*,.mp3,.m4a,.aac,.flac,.wav,.ogg,.opus"
+          accept="audio/*,image/jpeg,image/png,image/gif,image/webp,image/avif,.mp3,.m4a,.aac,.flac,.wav,.ogg,.opus,.jpg,.jpeg,.png,.gif,.webp,.avif"
         >
       </label>
 
@@ -198,6 +209,15 @@
       }
 
       return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+    }
+
+    const imageExtensions = new Set([
+      "jpg", "jpeg", "png", "gif", "webp", "avif"
+    ]);
+
+    function isImageFile(name) {
+      const extension = name.split(".").pop()?.toLowerCase();
+      return imageExtensions.has(extension);
     }
 
     function setFiles(files) {
@@ -356,12 +376,23 @@
             }, 1200);
           });
 
-          const audio = document.createElement("audio");
-          audio.controls = true;
-          audio.preload = "none";
-          audio.src = file.url;
+          item.append(name, meta, link, copyButton);
 
-          item.append(name, meta, link, copyButton, audio);
+          if (isImageFile(file.name)) {
+            const image = document.createElement("img");
+            image.className = "image-preview";
+            image.src = file.url;
+            image.alt = file.name;
+            image.loading = "lazy";
+            item.append(image);
+          } else {
+            const audio = document.createElement("audio");
+            audio.controls = true;
+            audio.preload = "none";
+            audio.src = file.url;
+            item.append(audio);
+          }
+
           fileList.append(item);
         }
       } catch {

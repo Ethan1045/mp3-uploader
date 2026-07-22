@@ -96,7 +96,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS files_original_name_unique
 ON files (original_name)
 `);
 
-const allowedExtensions = new Set([
+const allowedAudioExtensions = new Set([
   ".mp3",
   ".m4a",
   ".aac",
@@ -106,7 +106,21 @@ const allowedExtensions = new Set([
   ".opus"
 ]);
 
-const allowedMimeTypes = new Set([
+const allowedImageExtensions = new Set([
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".gif",
+  ".webp",
+  ".avif"
+]);
+
+const allowedExtensions = new Set([
+  ...allowedAudioExtensions,
+  ...allowedImageExtensions
+]);
+
+const allowedAudioMimeTypes = new Set([
   "audio/mpeg",
   "audio/mp3",
   "audio/mp4",
@@ -120,6 +134,14 @@ const allowedMimeTypes = new Set([
   "audio/opus",
   "application/ogg",
   "application/octet-stream"
+]);
+
+const allowedImageMimeTypes = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/avif"
 ]);
 
 function safeExtension(originalName) {
@@ -215,11 +237,12 @@ const upload = multer({
       return callback(new Error(`不支持的文件：${file.originalname}`));
     }
 
-    if (
-      file.mimetype &&
-      !allowedMimeTypes.has(file.mimetype) &&
-      !file.mimetype.startsWith("audio/")
-    ) {
+    const isAudio = allowedAudioExtensions.has(extension);
+    const allowedMimeTypes = isAudio
+      ? allowedAudioMimeTypes
+      : allowedImageMimeTypes;
+
+    if (file.mimetype && !allowedMimeTypes.has(file.mimetype)) {
       return callback(new Error(`文件类型不正确：${file.originalname}`));
     }
 
@@ -367,5 +390,5 @@ app.use((error, req, res, next) => {
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`服务器正在监听端口 ${PORT}`);
-  console.log(`歌曲保存目录：${STORAGE_DIR}`);
+  console.log(`媒体文件保存目录：${STORAGE_DIR}`);
 });
