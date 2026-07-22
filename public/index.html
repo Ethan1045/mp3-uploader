@@ -1,1 +1,375 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+  <title>音乐上传</title>
 
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 32px 16px;
+      background: #f4f4f5;
+      color: #18181b;
+      font-family:
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+    }
+
+    main {
+      width: min(820px, 100%);
+      margin: 0 auto;
+    }
+
+    .card {
+      margin-bottom: 20px;
+      padding: 24px;
+      border: 1px solid #e4e4e7;
+      border-radius: 18px;
+      background: white;
+      box-shadow: 0 8px 30px rgb(0 0 0 / 5%);
+    }
+
+    h1,
+    h2 {
+      margin-top: 0;
+    }
+
+    .drop-zone {
+      display: block;
+      padding: 48px 20px;
+      border: 2px dashed #a1a1aa;
+      border-radius: 14px;
+      text-align: center;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+
+    .drop-zone.dragging {
+      border-color: #18181b;
+      background: #fafafa;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    button {
+      padding: 10px 16px;
+      border: 0;
+      border-radius: 10px;
+      background: #18181b;
+      color: white;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    .secondary {
+      background: #e4e4e7;
+      color: #18181b;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    #status {
+      margin-top: 16px;
+      white-space: pre-wrap;
+    }
+
+    .file-item {
+      padding: 16px 0;
+      border-bottom: 1px solid #e4e4e7;
+    }
+
+    .file-item:last-child {
+      border-bottom: 0;
+    }
+
+    .file-name {
+      overflow-wrap: anywhere;
+      font-weight: 600;
+    }
+
+    .url {
+      display: block;
+      margin: 8px 0;
+      color: #2563eb;
+      overflow-wrap: anywhere;
+    }
+
+    audio {
+      width: 100%;
+      margin-top: 8px;
+    }
+
+    .small {
+      color: #71717a;
+      font-size: 13px;
+    }
+
+    progress {
+      width: 100%;
+      height: 14px;
+      margin-top: 14px;
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <section class="card">
+      <h1>音乐上传</h1>
+
+      <label class="drop-zone" id="dropZone">
+        <strong>点击选择，或者把歌曲拖进这里</strong>
+        <p class="small">
+          支持批量上传 MP3、M4A、AAC、FLAC、WAV、OGG、OPUS
+        </p>
+
+        <input
+          id="fileInput"
+          type="file"
+          multiple
+          accept="audio/*,.mp3,.m4a,.aac,.flac,.wav,.ogg,.opus"
+        >
+      </label>
+
+      <div class="actions">
+        <button id="uploadButton" disabled>上传</button>
+        <button id="copyAllButton" class="secondary" hidden>
+          复制全部链接
+        </button>
+      </div>
+
+      <progress id="progress" value="0" max="100" hidden></progress>
+      <div id="status"></div>
+    </section>
+
+    <section class="card">
+      <h2>最近上传</h2>
+      <div id="fileList">读取中……</div>
+    </section>
+  </main>
+
+  <script>
+    const fileInput = document.querySelector("#fileInput");
+    const dropZone = document.querySelector("#dropZone");
+    const uploadButton = document.querySelector("#uploadButton");
+    const copyAllButton = document.querySelector("#copyAllButton");
+    const progress = document.querySelector("#progress");
+    const status = document.querySelector("#status");
+    const fileList = document.querySelector("#fileList");
+
+    let selectedFiles = [];
+    let uploadedUrls = [];
+
+    function formatBytes(bytes) {
+      if (!Number.isFinite(bytes)) {
+        return "";
+      }
+
+      const units = ["B", "KB", "MB", "GB"];
+      let value = bytes;
+      let unitIndex = 0;
+
+      while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex += 1;
+      }
+
+      return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+    }
+
+    function setFiles(files) {
+      selectedFiles = Array.from(files);
+      uploadButton.disabled = selectedFiles.length === 0;
+
+      status.textContent = selectedFiles.length
+        ? `已选择 ${selectedFiles.length} 个文件`
+        : "";
+    }
+
+    fileInput.addEventListener("change", () => {
+      setFiles(fileInput.files);
+    });
+
+    for (const eventName of ["dragenter", "dragover"]) {
+      dropZone.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        dropZone.classList.add("dragging");
+      });
+    }
+
+    for (const eventName of ["dragleave", "drop"]) {
+      dropZone.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        dropZone.classList.remove("dragging");
+      });
+    }
+
+    dropZone.addEventListener("drop", (event) => {
+      setFiles(event.dataTransfer.files);
+    });
+
+    uploadButton.addEventListener("click", uploadFiles);
+
+    copyAllButton.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(uploadedUrls.join("\n"));
+      copyAllButton.textContent = "已复制";
+
+      setTimeout(() => {
+        copyAllButton.textContent = "复制全部链接";
+      }, 1500);
+    });
+
+    function uploadFiles() {
+      if (!selectedFiles.length) {
+        return;
+      }
+
+      const formData = new FormData();
+
+      for (const file of selectedFiles) {
+        formData.append("files", file);
+      }
+
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/upload");
+
+      uploadButton.disabled = true;
+      progress.hidden = false;
+      progress.value = 0;
+      status.textContent = "正在上传……";
+
+      xhr.upload.addEventListener("progress", (event) => {
+        if (!event.lengthComputable) {
+          return;
+        }
+
+        progress.value = Math.round(
+          (event.loaded / event.total) * 100
+        );
+      });
+
+      xhr.addEventListener("load", async () => {
+        uploadButton.disabled = false;
+
+        let result;
+
+        try {
+          result = JSON.parse(xhr.responseText);
+        } catch {
+          status.textContent = "服务器返回了无法识别的内容";
+          return;
+        }
+
+        if (xhr.status < 200 || xhr.status >= 300) {
+          status.textContent = result.error || "上传失败";
+          return;
+        }
+
+        uploadedUrls = result.files.map((file) => file.url);
+
+        status.textContent =
+          `上传完成，共 ${result.count} 个文件。`;
+
+        copyAllButton.hidden = uploadedUrls.length === 0;
+
+        selectedFiles = [];
+        fileInput.value = "";
+        uploadButton.disabled = true;
+
+        await loadFiles();
+      });
+
+      xhr.addEventListener("error", () => {
+        uploadButton.disabled = false;
+        status.textContent = "网络错误，上传失败";
+      });
+
+      xhr.send(formData);
+    }
+
+    async function loadFiles() {
+      try {
+        const response = await fetch("/api/files");
+        const result = await response.json();
+
+        if (!result.files.length) {
+          fileList.textContent = "暂时没有文件。";
+          return;
+        }
+
+        fileList.replaceChildren();
+
+        for (const file of result.files) {
+          const item = document.createElement("div");
+          item.className = "file-item";
+
+          const name = document.createElement("div");
+          name.className = "file-name";
+          name.textContent = file.name;
+
+          const meta = document.createElement("div");
+          meta.className = "small";
+          meta.textContent =
+            `${formatBytes(file.size)} · ` +
+            new Date(file.modifiedAt).toLocaleString();
+
+          const link = document.createElement("a");
+          link.className = "url";
+          link.href = file.url;
+          link.target = "_blank";
+          link.rel = "noopener";
+          link.textContent = file.url;
+
+          const copyButton = document.createElement("button");
+          copyButton.className = "secondary";
+          copyButton.textContent = "复制链接";
+
+          copyButton.addEventListener("click", async () => {
+            await navigator.clipboard.writeText(file.url);
+            copyButton.textContent = "已复制";
+
+            setTimeout(() => {
+              copyButton.textContent = "复制链接";
+            }, 1200);
+          });
+
+          const audio = document.createElement("audio");
+          audio.controls = true;
+          audio.preload = "none";
+          audio.src = file.url;
+
+          item.append(name, meta, link, copyButton, audio);
+          fileList.append(item);
+        }
+      } catch {
+        fileList.textContent = "文件列表读取失败。";
+      }
+    }
+
+    loadFiles();
+  </script>
+</body>
+</html>
