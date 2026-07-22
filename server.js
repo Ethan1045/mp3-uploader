@@ -13,6 +13,17 @@ const STORAGE_DIR = process.env.STORAGE_DIR || "/data/music";
 const UPLOAD_USERNAME = process.env.UPLOAD_USERNAME || "admin";
 const UPLOAD_PASSWORD = process.env.UPLOAD_PASSWORD;
 
+function normalizeOriginalName(name) {
+  const decoded = Buffer.from(name, "latin1").toString("utf8");
+
+  if (decoded.includes("\uFFFD")) {
+    return name;
+  }
+
+  const roundTrip = Buffer.from(decoded, "utf8").toString("latin1");
+  return roundTrip === name ? decoded : name;
+}
+
 if (!UPLOAD_PASSWORD) {
   console.warn(
     "警告：未设置 UPLOAD_PASSWORD，上传页面目前没有密码保护。"
@@ -34,6 +45,55 @@ CREATE TABLE IF NOT EXISTS files (
   size INTEGER,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 )
+`);
+
+const repairFileRecords = db.transaction(() => {
+  const rows = db.prepare(`
+    SELECT id, original_name, stored_name
+    FROM files
+    ORDER BY id DESC
+  `).all();
+  const updateName = db.prepare(`
+    UPDATE files
+    SET original_name = ?
+    WHERE id = ?
+  `);
+  const deleteRecord = db.prepare(`
+    DELETE FROM files
+    WHERE id = ?
+  `);
+  const seenNames = new Set();
+
+  for (const row of rows) {
+    const originalName = normalizeOriginalName(row.original_name);
+
+    if (seenNames.has(originalName)) {
+      deleteRecord.run(row.id);
+
+      try {
+        fs.unlinkSync(path.join(STORAGE_DIR, row.stored_name));
+      } catch (error) {
+        if (error.code !== "ENOENT") {
+          throw error;
+        }
+      }
+
+      continue;
+    }
+
+    seenNames.add(originalName);
+
+    if (originalName !== row.original_name) {
+      updateName.run(originalName, row.id);
+    }
+  }
+});
+
+repairFileRecords();
+
+db.exec(`
+CREATE UNIQUE INDEX IF NOT EXISTS files_original_name_unique
+ON files (original_name)
 `);
 
 const allowedExtensions = new Set([
@@ -216,22 +276,38 @@ app.post(
       INSERT INTO files
         (original_name, stored_name, url, size)
       VALUES (?, ?, ?, ?)
+      ON CONFLICT(original_name) DO NOTHING
+    `);
+    const findFile = db.prepare(`
+      SELECT
+        original_name AS originalName,
+        stored_name AS storedName,
+        size,
+        url
+      FROM files
+      WHERE original_name = ?
     `);
 
     const insertFiles = db.transaction((uploadedFiles) =>
       uploadedFiles.map((file) => {
+        const originalName = normalizeOriginalName(file.originalname);
         const url =
           `${baseUrl}/f/${encodeURIComponent(file.filename)}`;
 
-        insertFile.run(
-          file.originalname,
+        const insertResult = insertFile.run(
+          originalName,
           file.filename,
           url,
           file.size
         );
 
+        if (insertResult.changes === 0) {
+          fs.unlinkSync(file.path);
+          return findFile.get(originalName);
+        }
+
         return {
-          originalName: file.originalname,
+          originalName,
           storedName: file.filename,
           size: file.size,
           url
