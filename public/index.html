@@ -334,7 +334,7 @@
           meta.className = "small";
           meta.textContent =
             `${formatBytes(file.size)} · ` +
-            new Date(file.modifiedAt).toLocaleString();
+            new Date(file.created_at).toLocaleString();
 
           const link = document.createElement("a");
           link.className = "url";

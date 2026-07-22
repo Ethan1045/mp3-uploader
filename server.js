@@ -212,12 +212,34 @@ app.post(
     const files = req.files || [];
     const baseUrl = publicBaseUrl(req);
 
-    const result = files.map((file) => ({
-      originalName: file.originalname,
-      storedName: file.filename,
-      size: file.size,
-      url: `${baseUrl}/f/${encodeURIComponent(file.filename)}`
-    }));
+    const insertFile = db.prepare(`
+      INSERT INTO files
+        (original_name, stored_name, url, size)
+      VALUES (?, ?, ?, ?)
+    `);
+
+    const insertFiles = db.transaction((uploadedFiles) =>
+      uploadedFiles.map((file) => {
+        const url =
+          `${baseUrl}/f/${encodeURIComponent(file.filename)}`;
+
+        insertFile.run(
+          file.originalname,
+          file.filename,
+          url,
+          file.size
+        );
+
+        return {
+          originalName: file.originalname,
+          storedName: file.filename,
+          size: file.size,
+          url
+        };
+      })
+    );
+
+    const result = insertFiles(files);
 
     res.json({
       success: true,
@@ -227,40 +249,19 @@ app.post(
   }
 );
 
-app.get("/api/files", basicAuth, async (req, res, next) => {
-  try {
-    const entries = await fs.promises.readdir(STORAGE_DIR, {
-      withFileTypes: true
-    });
+app.get("/api/files", basicAuth, (req, res) => {
+  const files = db.prepare(`
+    SELECT
+      original_name AS name,
+      stored_name,
+      url,
+      size,
+      created_at
+    FROM files
+    ORDER BY id DESC
+  `).all();
 
-    const baseUrl = publicBaseUrl(req);
-
-    const files = await Promise.all(
-      entries
-        .filter((entry) => entry.isFile())
-        .map(async (entry) => {
-          const fullPath = path.join(STORAGE_DIR, entry.name);
-          const stat = await fs.promises.stat(fullPath);
-
-          return {
-            name: entry.name,
-            size: stat.size,
-            modifiedAt: stat.mtime.toISOString(),
-            url: `${baseUrl}/f/${encodeURIComponent(entry.name)}`
-          };
-        })
-    );
-
-    files.sort(
-      (a, b) =>
-        new Date(b.modifiedAt).getTime() -
-        new Date(a.modifiedAt).getTime()
-    );
-
-    res.json({ files });
-  } catch (error) {
-    next(error);
-  }
+  res.json({ files });
 });
 
 app.use((error, req, res, next) => {
