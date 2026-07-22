@@ -21,6 +21,21 @@ if (!UPLOAD_PASSWORD) {
 
 fs.mkdirSync(STORAGE_DIR, { recursive: true });
 
+const db = new Database(
+  path.join(STORAGE_DIR, "music.db")
+);
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  original_name TEXT NOT NULL,
+  stored_name TEXT NOT NULL UNIQUE,
+  url TEXT NOT NULL,
+  size INTEGER,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+)
+`);
+
 const allowedExtensions = new Set([
   ".mp3",
   ".m4a",
